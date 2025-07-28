@@ -1,34 +1,44 @@
-services:
-  kafka: 
-    image: apache/kafka:latest  # Usa a imagem oficial do Apache Kafka
-    restart: on-failure         # Reinicia somente em caso de falha
-    ports: 
-      - 9092:9092               # Expõe a porta padrão do Kafka no host
-    environment:
-      - KAFKA_CFG_BROKER_ID=1                                 # ID único do broker Kafka
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://kafka:9092            # Endereço onde o broker escuta conexões
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 # Endereço que os clientes vão usar para se conectar
-      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181            # Endereço do Zookeeper (corrigido)
-      - KAFKA_CFG_NUM_PARTITIONS=3                            # Número padrão de partições por tópico
-      - ALLOW_PLAINTEXT_LISTENERS=yes                         # Permite conexão sem autenticação (desenvolvimento)
-    depends_on:
-      - zookeeper  # Garante que o zookeeper esteja ativo antes de iniciar o Kafka
+version: '3.8'  # Versão do Docker Compose. A 3.8 é compatível com recursos modernos e amplamente suportada.
 
+services:
   zookeeper:
-    image: bitnami/zookeeper:latest  # Imagem Bitnami do Zookeeper
-    ports: 
-      - 2181:2181  # Porta padrão do Zookeeper
+    image: confluentinc/cp-zookeeper:7.5.3  # Imagem do Zookeeper usada pela Confluent, versão 7.5.3.
+    hostname: zookeeper                     # Nome do host dentro da rede Docker (usado para comunicação interna).
+    container_name: zookeeper               # Nome do container (opcional, apenas para facilitar).
+    ports:
+      - "2181:2181"                         # Expõe a porta padrão do Zookeeper (2181) no host.
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes  # Permite login anônimo para ambiente de desenvolvimento
+      ZOOKEEPER_CLIENT_PORT: 2181          # Porta onde o Zookeeper escutará requisições de clientes.
+      ZOOKEEPER_TICK_TIME: 2000            # Intervalo básico de tempo para o Zookeeper em milissegundos.
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3      # Imagem do Apache Kafka da Confluent, versão 7.5.3.
+    hostname: kafka                         # Nome do host dentro da rede Docker (usado internamente).
+    container_name: kafka                   # Nome do container Kafka.
+    ports:
+      - "9092:9092"                         # Expõe a porta 9092 no host para se comunicar com clientes externos.
+    environment:
+      KAFKA_BROKER_ID: 1                    # Identificador único para este broker Kafka.
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'  # Endereço do Zookeeper (nome do container + porta).
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092  # Lista de listeners que o Kafka "anuncia". Clientes internos usam kafka:29092, externos usam localhost:9092.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT  # Define o protocolo para cada listener nomeado.
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT  # Define qual listener os brokers usarão para se comunicar entre si.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1  # Define o número de réplicas para os tópicos internos do Kafka (como __consumer_offsets). Como é ambiente local, pode ser 1.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0  # Evita atraso na primeira re-balanceamento de grupos de consumidores.
+    depends_on:
+      - zookeeper                          # Garante que o Zookeeper seja iniciado antes do Kafka.
 
   kafka-ui:
-    container_name: kafka-ui
-    image: provectuslabs/kafka-ui:latest  # Interface visual do Kafka
+    image: provectuslabs/kafka-ui:latest   # Imagem da interface web Kafka UI.
+    container_name: kafka-ui               # Nome do container da interface Kafka UI.
     ports:
-      - 8080:8080  # Porta onde a UI estará disponível (http://localhost:8080)
+      - 8080:8080                          # Expondo a interface web do Kafka UI na porta 8080 do host.
+    depends_on:
+      - kafka                              # Espera o Kafka estar de pé antes de subir.
     environment:
-      - KAFKA_CLUSTERS_0_NAME=PlansulBrokerKafka               # Nome de exibição do cluster
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092           # Endereço do broker
-      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181              # Endereço do Zookeeper
+      KAFKA_CLUSTERS_0_NAME: PlansulBrokerKafka  # Nome do cluster exibido na interface.
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092  # Endereço interno do Kafka para a interface se conectar.
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181       # Endereço do Zookeeper usado pelo Kafka UI.
+
     # volumes:
     #   - ~/kui/config.yml:/etc/kafkaui/dynamic_config.yaml    # (Opcional) Configuração dinâmica persistente da UI
